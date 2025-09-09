@@ -3,7 +3,7 @@ const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
 const app = express();
-const port = 5000;
+const port = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
@@ -15,6 +15,7 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  
 });
 
 app.post("/InsertLogin", async (req, res) => {
@@ -1032,3 +1033,4 @@ app.get("/okay", (req, res) => {
 });
 
 app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
+
