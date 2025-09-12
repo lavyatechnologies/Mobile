@@ -15,9 +15,100 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT,
-  
+   port: process.env.DB_PORT,
 });
+
+
+
+//AdminPanal
+
+app.post("/InsertLoginToAdmin", async (req, res) => {
+  const { Name, Phone, Password,	ValidityDate } = req.body;
+
+  if (!Name || !Phone || !Password) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  try {
+    const [rows] = await pool.query("CALL InsertLoginToAdmin(?, ?,?,?)", [
+      Name,
+      Phone,
+      Password,
+      ValidityDate,
+    ]);
+    res.json({ message: "User inserted successfully", data: rows });
+  } catch (error) {
+    console.error("Error inserting user:", error);
+    res.status(500).json({ error: "Failed to save user" });
+  }
+});
+//getUserall
+app.get("/getUser", async (req, res) => {
+  try {
+    const connection = await pool.getConnection();
+
+    const sql = "CALL getUser()";
+    const [rows] = await connection.query(sql); // No parameters passed
+
+    connection.release();
+
+    res.status(200).json({
+      success: true,
+      data: rows[0], // rows[0] contains the result set
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve logins",
+      error: error.message,
+    });
+  }
+});
+//updateUsertoAdmin
+app.put("/UpdateUser", async (req, res) => {
+  const { LoginID, Name, Phone, Password, ValidityDate } = req.body;
+
+  if (!LoginID || !Name || !Phone || !Password || !ValidityDate) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+    // Procedure ko 5 parameters ke saath call karo
+    const sql = "CALL UpdateUser(?, ?, ?, ?, ?)";
+    await pool.query(sql, [LoginID, Name, Phone, Password, ValidityDate]);
+
+    res.json({ message: "User updated successfully" });
+  } catch (err) {
+    console.error("Error updating user:", err);
+
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "Phone number already exists" });
+    }
+
+    res.status(500).json({ message: "Failed to update user" });
+  }
+});
+//admindeletefor user
+// Delete user by LoginID
+app.delete("/DeleteUser/:id", async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "LoginID is required" });
+  }
+
+  try {
+    const sql = "CALL DeleteUser(?)";
+    await pool.query(sql, [id]);
+
+    res.json({ success: true, message: "User deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting User:", err);
+    res.status(500).json({ success: false, message: "Failed to delete User" });
+  }
+});
+
 
 app.post("/InsertLogin", async (req, res) => {
   const { Name, Phone, Password } = req.body;
@@ -35,7 +126,7 @@ app.post("/InsertLogin", async (req, res) => {
     res.json({ message: "User inserted successfully", data: rows });
   } catch (error) {
     console.error("Error inserting user:", error);
-    res.status(500).json({ error: "Failed to insert user" });
+    res.status(500).json({ error: "Failed to save user" });
   }
 });
 
@@ -536,7 +627,7 @@ app.delete("/deleteResult", async (req, res) => {
 app.post("/insertSale", async (req, res) => {
   const {
     fLoginID,
-    Date,
+    SaleDate,
     fShiftID,
     fClientID,
     D_Rate,
@@ -550,14 +641,31 @@ app.post("/insertSale", async (req, res) => {
     A_Sale,
     B_Sale,
     StaffID,
+    // CurrentDateTime,
   } = req.body;
+
+const now = new Date();
+
+// IST timezone में convert
+const istNow = new Date(
+  now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+);
+
+const year = istNow.getFullYear();
+const month = String(istNow.getMonth() + 1).padStart(2, "0");
+const day = String(istNow.getDate()).padStart(2, "0");
+const hours = String(istNow.getHours()).padStart(2, "0");
+const minutes = String(istNow.getMinutes()).padStart(2, "0");
+const seconds = String(istNow.getSeconds()).padStart(2, "0");
+
+const CurrentDateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
   try {
     const [result] = await pool.query(
-      `CALL InsertSale(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?)`,
+      `CALL InsertSale(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?)`,
       [
         fLoginID,
-        Date,
+        SaleDate,
         fShiftID,
         fClientID,
         D_Rate,
@@ -571,12 +679,18 @@ app.post("/insertSale", async (req, res) => {
         A_Sale,
         B_Sale,
         StaffID,
+        CurrentDateTime,
       ]
     );
 
     res.json({ success: true, message: "Sale inserted successfully" });
   } catch (error) {
     console.error(error);
+     if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        error: `❌ Sale already exists`,
+      });
+    }
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -1034,5 +1148,3 @@ app.get("/okay", (req, res) => {
 });
 
 app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
-
-
