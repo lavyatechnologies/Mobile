@@ -15,15 +15,13 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-   port: process.env.DB_PORT,
+  port: process.env.DB_PORT,
 });
-
-
 
 //AdminPanal
 
 app.post("/InsertLoginToAdmin", async (req, res) => {
-  const { Name, Phone, Password,	ValidityDate } = req.body;
+  const { Name, Phone, Password, ValidityDate } = req.body;
 
   if (!Name || !Phone || !Password) {
     return res.status(400).json({ error: "All fields are required" });
@@ -39,6 +37,9 @@ app.post("/InsertLoginToAdmin", async (req, res) => {
     res.json({ message: "User inserted successfully", data: rows });
   } catch (error) {
     console.error("Error inserting user:", error);
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "Phone number already exists" });
+    }
     res.status(500).json({ error: "Failed to save user" });
   }
 });
@@ -109,7 +110,6 @@ app.delete("/DeleteUser/:id", async (req, res) => {
   }
 });
 
-
 app.post("/InsertLogin", async (req, res) => {
   const { Name, Phone, Password } = req.body;
 
@@ -160,7 +160,7 @@ app.post("/checkStaffLoginID", async (req, res) => {
   const { StaffID, Password } = req.body;
 
   if (!StaffID || !Password) {
-    return res.status(400).json({ error: "StaffID and Password are required" });
+    return res.status(400).json({ error: " Password are required" });
   }
 
   try {
@@ -193,7 +193,7 @@ app.get("/GetShift", async (req, res) => {
   const { LoginID } = req.query; // we get it from query params for GET
 
   if (!LoginID) {
-    return res.status(400).json({ error: "LoginID is required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -242,9 +242,7 @@ app.put("/updateShift", async (req, res) => {
   const { SID, ShiftName, LoginID } = req.body;
 
   if (!SID || !ShiftName || !LoginID) {
-    return res
-      .status(400)
-      .json({ message: "SID, ShiftName, and LoginID are required" });
+    return res.status(400).json({ message: "All fields are required" });
   }
 
   try {
@@ -268,31 +266,29 @@ app.put("/updateShift", async (req, res) => {
 //deleteShift
 app.delete("/deleteShift", async (req, res) => {
   const { SID, LoginID } = req.body;
+  console.log(SID, LoginID, "delete");
 
-  if (!SID || !LoginID) {
-    return res.status(400).json({ message: "SID and LoginID are required" });
+  // Null/undefined check (0 allowed)
+  if (SID == null || LoginID == null) {
+    return res.status(400).json({ message: "Please Try Again" });
   }
 
   try {
-    // Check if any results reference this shift
-    const [results] = await pool.query(
-      "SELECT COUNT(*) AS count FROM result WHERE fShiftID = ?",
-      [SID]
-    );
-    if (results[0].count > 0) {
-      return res
-        .status(409)
-        .json({ message: "Cannot delete shift: results exist for this shift" });
-    }
+    // Call stored procedure directly
+    const [rows] = await pool.query("CALL DeleteShift(?, ?)", [SID, LoginID]);
 
-    // Proceed with deletion
-    const sql = "CALL DeleteShift(?, ?)";
-    await pool.query(sql, [SID, LoginID]);
+    if (rows && rows.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ message: "Shift not found or already deleted" });
+    }
 
     res.json({ message: "Shift deleted successfully" });
   } catch (err) {
     console.error("Error deleting shift:", err);
-    res.status(500).json({ message: "Failed to delete shift" });
+    res
+      .status(500)
+      .json({ message: "Failed to delete shift. Try again later." });
   }
 });
 
@@ -301,7 +297,7 @@ app.get("/getAllShiftName", async (req, res) => {
   const { LoginID } = req.query; // we get it from query params for GET
 
   if (!LoginID) {
-    return res.status(400).json({ error: "LoginID is required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -322,7 +318,7 @@ app.get("/getAllClientName", async (req, res) => {
   const { LoginID } = req.query; // we get it from query params for GET
 
   if (!LoginID) {
-    return res.status(400).json({ error: "LoginID is required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -410,7 +406,7 @@ app.get("/getClient", async (req, res) => {
   const { LoginID } = req.query;
 
   if (!LoginID) {
-    return res.status(400).json({ error: "LoginID is required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -439,7 +435,7 @@ app.put("/updateClient", async (req, res) => {
   } = req.body;
 
   if (!CID || !LoginID) {
-    return res.status(400).json({ message: "CID and LoginID are required" });
+    return res.status(400).json({ message: "All fields are required" });
   }
 
   try {
@@ -483,7 +479,7 @@ app.delete("/deleteClient", async (req, res) => {
   const { CID, LoginID } = req.body;
 
   if (!CID || !LoginID) {
-    return res.status(400).json({ message: "CID and LoginID are required" });
+    return res.status(400).json({ message: "Please Try Again" });
   }
 
   try {
@@ -561,7 +557,7 @@ app.get("/getResult", async (req, res) => {
   const { Date, LoginID } = req.query;
 
   if (!Date || !LoginID) {
-    return res.status(400).json({ error: "Date and LoginID are required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -582,11 +578,9 @@ app.put("/updateResult", async (req, res) => {
   const { Date, fShiftID, Results, LoginID, RID } = req.body;
 
   if (!Date || !fShiftID || !Results || !LoginID || !RID) {
-    return res
-      .status(400)
-      .json({
-        message: "Date, fShiftID, Results, fLoginID, and RID are required",
-      });
+    return res.status(400).json({
+      message: "All fields are required",
+    });
   }
 
   try {
@@ -610,7 +604,7 @@ app.delete("/deleteResult", async (req, res) => {
   const { RID, LoginID } = req.body;
 
   if (!RID || !LoginID) {
-    return res.status(400).json({ message: "RID and LoginID are required" });
+    return res.status(400).json({ message: "All fields are required" });
   }
 
   try {
@@ -644,21 +638,21 @@ app.post("/insertSale", async (req, res) => {
     // CurrentDateTime,
   } = req.body;
 
-const now = new Date();
+  const now = new Date();
 
-// IST timezone में convert
-const istNow = new Date(
-  now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
-);
+  // IST timezone में convert
+  const istNow = new Date(
+    now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+  );
 
-const year = istNow.getFullYear();
-const month = String(istNow.getMonth() + 1).padStart(2, "0");
-const day = String(istNow.getDate()).padStart(2, "0");
-const hours = String(istNow.getHours()).padStart(2, "0");
-const minutes = String(istNow.getMinutes()).padStart(2, "0");
-const seconds = String(istNow.getSeconds()).padStart(2, "0");
+  const year = istNow.getFullYear();
+  const month = String(istNow.getMonth() + 1).padStart(2, "0");
+  const day = String(istNow.getDate()).padStart(2, "0");
+  const hours = String(istNow.getHours()).padStart(2, "0");
+  const minutes = String(istNow.getMinutes()).padStart(2, "0");
+  const seconds = String(istNow.getSeconds()).padStart(2, "0");
 
-const CurrentDateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  const CurrentDateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
   try {
     const [result] = await pool.query(
@@ -686,7 +680,7 @@ const CurrentDateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
     res.json({ success: true, message: "Sale inserted successfully" });
   } catch (error) {
     console.error(error);
-     if (error.code === "ER_DUP_ENTRY") {
+    if (error.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
         error: `❌ Sale already exists`,
       });
@@ -701,9 +695,7 @@ app.get("/getSaleMessage", async (req, res) => {
   console.log(Date, LoginID, SID, fClientID, "fetxhsheet");
 
   if (!Date || !LoginID || !SID) {
-    return res
-      .status(400)
-      .json({ error: "Date, LoginID, and SID are required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -734,7 +726,7 @@ app.delete("/deleteSale", async (req, res) => {
   const { LoginID, SaleID } = req.body;
 
   if (!LoginID || !SaleID) {
-    return res.status(400).json({ message: "SaleID and LoginID are required" });
+    return res.status(400).json({ message: "Please Try Again" });
   }
 
   try {
@@ -752,9 +744,7 @@ app.get("/getSaleDetails", async (req, res) => {
   const { Date, LoginID, SID, StaffID } = req.query;
 
   if (!Date || !LoginID || !SID) {
-    return res
-      .status(400)
-      .json({ error: "Date, LoginID, and SID are required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -780,7 +770,7 @@ app.get("/getlatestEntry", async (req, res) => {
   const { LoginID } = req.query;
 
   if (!LoginID) {
-    return res.status(400).json({ error: "LoginID is required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -810,7 +800,7 @@ app.get("/getSaleSummaryClientWise", async (req, res) => {
   const { Date, LoginID, fClientID, fShiftID } = req.query;
 
   if (!Date || !LoginID) {
-    return res.status(400).json({ error: "Date and LoginID are required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -838,9 +828,7 @@ app.get("/getProfitORLoss", async (req, res) => {
   const { LoginID, FromDate, ToDate } = req.query;
 
   if (!LoginID || !FromDate || !ToDate) {
-    return res
-      .status(400)
-      .json({ error: "LoginID, FromDate, ToDate required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -865,9 +853,7 @@ app.get("/getResultFromDatefShiftID", async (req, res) => {
   const { Date, fShiftID, fLoginID } = req.query;
 
   if (!Date || !fLoginID || !fShiftID) {
-    return res
-      .status(400)
-      .json({ error: "Date, fShiftID and LoginID required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -927,7 +913,7 @@ app.get("/getAccount", async (req, res) => {
   const { fLoginID, Date } = req.query;
 
   if (!fLoginID || !Date) {
-    return res.status(400).json({ error: "Date required" });
+    return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
@@ -1077,7 +1063,7 @@ app.put("/updateStaff", async (req, res) => {
     const { StaffID, StaffName, Mobile, Password, fLoginID } = req.body;
 
     if (!StaffID) {
-      return res.status(400).json({ error: "StaffID is required" });
+      return res.status(400).json({ error: "Please Try Again" });
     }
 
     // CALL stored procedure
@@ -1101,9 +1087,7 @@ app.delete("/deleteStaff", async (req, res) => {
     const { StaffID, fLoginID } = req.body;
 
     if (!StaffID || !fLoginID) {
-      return res
-        .status(400)
-        .json({ error: "StaffID and fLoginID are required" });
+      return res.status(400).json({ error: "Please Try Again" });
     }
 
     const [result] = await pool.query("CALL DeleteStaff(?, ?)", [
