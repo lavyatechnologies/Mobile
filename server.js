@@ -265,30 +265,41 @@ app.put("/updateShift", async (req, res) => {
 
 //deleteShift
 app.delete("/deleteShift", async (req, res) => {
-  const { SID, LoginID } = req.body;
-  console.log(SID, LoginID, "delete");
+  const { SID, LoginID } = req.query;
+  console.log("deleteShift =>", SID, LoginID);
 
-  // Null/undefined check (0 allowed)
-  if (SID == null || LoginID == null) {
-    return res.status(400).json({ message: "Please Try Again" });
+  if (!SID || !LoginID) {
+    return res.status(400).json({ message: "SID and LoginID are required" });
   }
 
   try {
-    // Call stored procedure directly
-    const [rows] = await pool.query("CALL DeleteShift(?, ?)", [SID, LoginID]);
+    // Check if results reference this shift
+    const [results] = await pool.query(
+      "SELECT COUNT(*) AS count FROM result WHERE fShiftID = ?",
+      [SID]
+    );
 
-    if (rows && rows.affectedRows === 0) {
+    if (results[0].count > 0) {
       return res
-        .status(404)
-        .json({ message: "Shift not found or already deleted" });
+        .status(409)
+        .json({ message: "Cannot delete shift: results exist for this shift" });
     }
+
+    // Proceed with deletion
+    await pool.query("CALL DeleteShift(?, ?)", [SID, LoginID]);
 
     res.json({ message: "Shift deleted successfully" });
   } catch (err) {
     console.error("Error deleting shift:", err);
-    res
-      .status(500)
-      .json({ message: "Failed to delete shift. Try again later." });
+
+    if (err.code === "ER_ROW_IS_REFERENCED_2") {
+      return res.status(409).json({
+        message:
+          "Cannot delete Game: sales exist for this Game",
+      });
+    }
+
+    res.status(500).json({ message: "Failed to delete shift" });
   }
 });
 
@@ -1132,3 +1143,4 @@ app.get("/okay", (req, res) => {
 });
 
 app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
+
