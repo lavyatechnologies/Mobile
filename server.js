@@ -282,7 +282,7 @@ app.delete("/deleteShift", async (req, res) => {
     if (results[0].count > 0) {
       return res
         .status(409)
-        .json({ message: "Cannot delete shift: results exist for this shift" });
+        .json({ message: "Unable to delete.Data Already exists!" });
     }
 
     // Proceed with deletion
@@ -295,13 +295,14 @@ app.delete("/deleteShift", async (req, res) => {
     if (err.code === "ER_ROW_IS_REFERENCED_2") {
       return res.status(409).json({
         message:
-          "Cannot delete Game: sales exist for this Game",
+          "Unable to delete.Data Already exists!",
       });
     }
 
     res.status(500).json({ message: "Failed to delete shift" });
   }
 });
+
 
 //getAllshiftName
 app.get("/getAllShiftName", async (req, res) => {
@@ -500,6 +501,13 @@ app.delete("/deleteClient", async (req, res) => {
     res.json({ message: "Client deleted successfully" });
   } catch (err) {
     console.error("Error deleting client:", err);
+
+      if (err.code === "ER_ROW_IS_REFERENCED_2") {
+      return res.status(409).json({
+        message:
+          "Unable to delete.Data Already exists!",
+      });
+    }
     res.status(500).json({ message: "Failed to delete client" });
   }
 });
@@ -1143,4 +1151,3 @@ app.get("/okay", (req, res) => {
 });
 
 app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
-
