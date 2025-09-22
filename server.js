@@ -21,18 +21,19 @@ const pool = mysql.createPool({
 //AdminPanal
 
 app.post("/InsertLoginToAdmin", async (req, res) => {
-  const { Name, Phone, Password, ValidityDate } = req.body;
+  const { Name, Phone, Password, ValidityDate ,StaffCount} = req.body;
 
   if (!Name || !Phone || !Password) {
     return res.status(400).json({ error: "All fields are required" });
   }
 
   try {
-    const [rows] = await pool.query("CALL InsertLoginToAdmin(?, ?,?,?)", [
+    const [rows] = await pool.query("CALL InsertLoginToAdmin(?, ?,?,?,?)", [
       Name,
       Phone,
       Password,
       ValidityDate,
+      StaffCount,
     ]);
     res.json({ message: "User inserted successfully", data: rows });
   } catch (error) {
@@ -68,16 +69,16 @@ app.get("/getUser", async (req, res) => {
 });
 //updateUsertoAdmin
 app.put("/UpdateUser", async (req, res) => {
-  const { LoginID, Name, Phone, Password, ValidityDate } = req.body;
+  const { LoginID, Name, Phone, Password, ValidityDate,StaffCount } = req.body;
 
-  if (!LoginID || !Name || !Phone || !Password || !ValidityDate) {
+  if (!LoginID || !Name || !Phone || !Password || !ValidityDate ) {
     return res.status(400).json({ message: "All fields are required" });
   }
 
   try {
     // Procedure ko 5 parameters ke saath call karo
-    const sql = "CALL UpdateUser(?, ?, ?, ?, ?)";
-    await pool.query(sql, [LoginID, Name, Phone, Password, ValidityDate]);
+    const sql = "CALL UpdateUser(?, ?, ?, ?, ?,?)";
+    await pool.query(sql, [LoginID, Name, Phone, Password, ValidityDate,StaffCount]);
 
     res.json({ message: "User updated successfully" });
   } catch (err) {
@@ -130,37 +131,42 @@ app.post("/InsertLogin", async (req, res) => {
   }
 });
 
+
 //check login
 app.post("/checklogin", async (req, res) => {
   const { Phone, Password } = req.body;
 
   if (!Phone || !Password) {
-    return res.status(400).json({ error: "Phone and Password are required" });
+    return res.status(400).json({ success: false, message: "Phone and Password are required" });
   }
 
   try {
     const [rows] = await pool.query("CALL CheckLogin(?, ?)", [Phone, Password]);
+    const user = rows[0]?.[0];
 
-    if (rows[0].length > 0) {
-      res.json({ success: true, user: rows[0][0] });
-    } else {
-      res.json({
-        success: false,
-        message: "Invalid credentials or account expired",
-      });
+    if (!user) {
+      return res.json({ success: false, code: "NOT_FOUND", message: "Account not found" });
     }
+
+    // ✅ ab yaha expiry check karega
+    if (user.ValidityDate && new Date(user.ValidityDate) < new Date()) {
+      return res.json({ success: false, code: "EXPIRED", message: "Your account has expired" });
+    }
+
+    res.json({ success: true, user });
   } catch (error) {
     console.error("Error executing procedure:", error);
-    res.status(500).json({ error: "Database error" });
+    res.status(500).json({ success: false, code: "SERVER_ERROR", message: "Database error" });
   }
 });
+
 
 //checkstafflogin
 app.post("/checkStaffLoginID", async (req, res) => {
   const { StaffID, Password } = req.body;
 
   if (!StaffID || !Password) {
-    return res.status(400).json({ error: " Password are required" });
+    return res.status(400).json({ error: "StaffID and Password are required" });
   }
 
   try {
@@ -169,24 +175,43 @@ app.post("/checkStaffLoginID", async (req, res) => {
       Password,
     ]);
 
-    // Procedure return करता है SELECT result
+    // Procedure returns SELECT result
     if (rows[0].length > 0 && rows[0][0].fLoginID) {
-      res.json({
+      const staff = rows[0][0];
+
+      // Check expiry
+      if (staff.ValidityDate && new Date(staff.ValidityDate) < new Date()) {
+        return res.json({
+          success: false,
+          code: "EXPIRED",
+          message: "Your account has expired",
+        });
+      }
+
+      // Successful login
+      return res.json({
         success: true,
-        fLoginID: rows[0][0].fLoginID,
-        StafffID: rows[0][0].StaffID,
+        fLoginID: staff.fLoginID,
+        StaffID: staff.StaffID,
       });
     } else {
-      res.json({
+      // Invalid credentials
+      return res.json({
         success: false,
-        message: "Invalid credentials or account expired",
+        code: "NOT_FOUND",
+        message: "Invalid credentials",
       });
     }
   } catch (error) {
     console.error("Error executing procedure:", error);
-    res.status(500).json({ error: "Database error" });
+    return res.status(500).json({
+      success: false,
+      code: "SERVER_ERROR",
+      message: "Database error",
+    });
   }
 });
+
 
 //getShift
 app.get("/GetShift", async (req, res) => {
@@ -1075,6 +1100,27 @@ app.get("/getStaff", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch staff" });
   }
 });
+
+app.get("/getStaffCount", async (req, res) => {
+  const { LoginID } = req.query; 
+  if (!LoginID) {
+    return res.status(400).json({ error: "Please Try Again" });
+  }
+  try {
+    const [rows] = await pool.query("CALL getStaffCount(?)", [LoginID]);
+
+    res.json({
+      message: "StaffCount fetched successfully",
+      data: rows,
+    });
+  } catch (error) {
+    console.error("Error fetching StaffCount:", error);
+    res.status(500).json({ error: "Failed to fetch StaffCount" });
+  }
+});
+
+
+
 
 // Update Staff API
 app.put("/updateStaff", async (req, res) => {
