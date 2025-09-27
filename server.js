@@ -18,6 +18,22 @@ const pool = mysql.createPool({
   port: process.env.DB_PORT,
 });
 
+
+
+
+app.post("/api/updatePassword", async (req, res) => {
+  const { loginID, oldPassword, newPassword } = req.body;
+  try {
+    const [rows] = await pool.query(
+      "CALL UpdatePassword(?, ?, ?)",
+      [loginID, oldPassword, newPassword]
+    );
+    res.json({ message: "Password updated successfully!" });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 //AdminPanal
 
 app.post("/InsertLoginToAdmin", async (req, res) => {
@@ -764,7 +780,37 @@ app.get("/getSaleMessage", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch message" });
   }
 });
+app.get("/getSaleHistory", async (req, res) => {
+  const { Date, LoginID, SID, fClientID, StaffID } = req.query;
 
+  console.log(Date, LoginID, SID, fClientID, "fetxhsheet");
+
+  if (!Date || !LoginID || !SID) {
+    return res.status(400).json({ error: "Please Try Again" });
+  }
+
+  try {
+    // agar fClientID empty, undefined ya "null"/"NULL" string hai to null pass karo
+    const ClientID =
+      fClientID && fClientID.toLowerCase() !== "null" ? fClientID : null;
+
+    const [rows] = await pool.query("CALL getSaleHistory(?, ?, ?, ?,?)", [
+      LoginID,
+      SID,
+      Date,
+      ClientID,
+      StaffID, // ✅ safe null
+    ]);
+
+    res.json({
+      message: "Message fetched successfully",
+      data: rows[0], // MySQL CALL returns nested array
+    });
+  } catch (error) {
+    console.error("Error fetching message:", error);
+    res.status(500).json({ error: "Failed to fetch message" });
+  }
+});
 //deleteSales
 app.delete("/deleteSale", async (req, res) => {
   const { LoginID, SaleID } = req.body;
@@ -1060,6 +1106,39 @@ app.post("/getClientSumTotal", async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+app.post("/GetLedgerReport", async (req, res) => {
+  const { fClientID, fLoginID ,FromDate,ToDate} = req.body;
+
+  if (!fClientID || !fLoginID || !FromDate || !ToDate) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Missing required fields" });
+  }
+
+  try {
+    const [rows] = await pool.query(`CALL GetLedgerReport(?, ?,?,?)`, [
+      fLoginID,
+      fClientID,
+      FromDate,
+      ToDate,
+    ]);
+
+    // MySQL procedure result आता है nested array में, इसको निकालना पड़ेगा
+    const result = rows[0] || [];
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error fetching client totals:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+
 //insertStaff
 app.post("/insertstaff", async (req, res) => {
   try {
