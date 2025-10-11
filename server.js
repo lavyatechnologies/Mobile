@@ -37,19 +37,20 @@ app.post("/api/updatePassword", async (req, res) => {
 //AdminPanal
 
 app.post("/InsertLoginToAdmin", async (req, res) => {
-  const { Name, Phone, Password, ValidityDate ,StaffCount} = req.body;
+  const { Name, Phone, Password, ValidityDate ,StaffCount,Remarks} = req.body;
 
   if (!Name || !Phone || !Password) {
     return res.status(400).json({ error: "All fields are required" });
   }
 
   try {
-    const [rows] = await pool.query("CALL InsertLoginToAdmin(?, ?,?,?,?)", [
+    const [rows] = await pool.query("CALL InsertLoginToAdmin(?, ?,?,?,?,?)", [
       Name,
       Phone,
       Password,
       ValidityDate,
       StaffCount,
+      Remarks,
     ]);
     res.json({ message: "User inserted successfully", data: rows });
   } catch (error) {
@@ -85,7 +86,7 @@ app.get("/getUser", async (req, res) => {
 });
 //updateUsertoAdmin
 app.put("/UpdateUser", async (req, res) => {
-  const { LoginID, Name, Phone, Password, ValidityDate,StaffCount } = req.body;
+  const { LoginID, Name, Phone, Password, ValidityDate,StaffCount ,Remarks} = req.body;
 
   if (!LoginID || !Name || !Phone || !Password || !ValidityDate ) {
     return res.status(400).json({ message: "All fields are required" });
@@ -93,8 +94,8 @@ app.put("/UpdateUser", async (req, res) => {
 
   try {
     // Procedure ko 5 parameters ke saath call karo
-    const sql = "CALL UpdateUser(?, ?, ?, ?, ?,?)";
-    await pool.query(sql, [LoginID, Name, Phone, Password, ValidityDate,StaffCount]);
+    const sql = "CALL UpdateUser(?, ?, ?, ?, ?,?,?)";
+    await pool.query(sql, [LoginID, Name, Phone, Password, ValidityDate,StaffCount,Remarks]);
 
     res.json({ message: "User updated successfully" });
   } catch (err) {
@@ -157,18 +158,29 @@ app.post("/checklogin", async (req, res) => {
   }
 
   try {
+    // 1️⃣ Phone number check
+    const [phoneRows] = await pool.query("SELECT * FROM login WHERE Phone = ?", [Phone]);
+
+    if (phoneRows.length === 0) {
+      // Phone not found
+      return res.json({ success: false, code: "NOT_FOUND", message: "Account not found" });
+    }
+
+    // 2️⃣ Password check
     const [rows] = await pool.query("CALL CheckLogin(?, ?)", [Phone, Password]);
     const user = rows[0]?.[0];
 
     if (!user) {
-      return res.json({ success: false, code: "NOT_FOUND", message: "Account not found" });
+      // Phone exists, but password wrong
+      return res.json({ success: false, code: "WRONG_PASSWORD", message: "Password is incorrect" });
     }
 
-    // ✅ ab yaha expiry check karega
+    // 3️⃣ Expiry check
     if (user.ValidityDate && new Date(user.ValidityDate) < new Date()) {
       return res.json({ success: false, code: "EXPIRED", message: "Your account has expired" });
     }
 
+    // 4️⃣ Successful login
     res.json({ success: true, user });
   } catch (error) {
     console.error("Error executing procedure:", error);
@@ -785,7 +797,7 @@ app.get("/getSaleHistory", async (req, res) => {
 
   console.log(Date, LoginID, SID, fClientID, "fetxhsheet");
 
-  if (!Date || !LoginID || !SID) {
+  if (!Date || !LoginID ) {
     return res.status(400).json({ error: "Please Try Again" });
   }
 
