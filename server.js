@@ -1012,15 +1012,15 @@ app.post("/insertAccount", async (req, res) => {
 });
 //getAccutonts
 app.get("/getAccount", async (req, res) => {
-  const { fLoginID, Date } = req.query;
-
-  if (!fLoginID || !Date) {
+  const { fLoginID, dateTo, dateFrom } = req.query;
+console.log(fLoginID, dateTo, dateFrom, "accountdata");
+  if (!fLoginID || !dateTo || !dateFrom) {
     return res.status(400).json({ error: "Please Try Again" });
   }
 
   try {
     // Call the stored procedure
-    const [rows] = await pool.query("CALL getAccount(?, ?)", [fLoginID, Date]);
+    const [rows] = await pool.query("CALL getAccount(?, ?,?)", [fLoginID,  dateFrom, dateTo]);
 
     // rows[0] में actual result आता है
     res.json({
