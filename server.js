@@ -4,7 +4,7 @@ const mysql = require("mysql2/promise");
 const cors = require("cors");
 const app = express();
 const port = process.env.PORT || 5000;
-
+const Razorpay = require("razorpay");
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -19,7 +19,102 @@ const pool = mysql.createPool({
 });
 
 
+//razorpay
+const instance = new Razorpay({
+  key_id: "rzp_test_RZa5NEeFkZpL4v",
+  key_secret: "1K2HFkgh6S5w62GiO6k0tuhM",
+});
 
+// 🧾 Step 1: Create Order API
+app.post("/create-order", async (req, res) => {
+  const { amount, currency, receipt, fLoginID ,Name} = req.body;
+console.log(amount, currency, receipt, fLoginID,Name ,"createorder");
+  try {
+    const options = {
+      amount: amount * 100, // Amount in paise
+      currency: currency || "INR",
+      receipt: receipt || `receipt_${Date.now()}`,
+      notes: { fLoginID , Name }, // Save user id for reference
+    };
+console.log(options,"option")
+    const order = await instance.orders.create(options);
+    res.json({ success: true, order });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ✅ Step 2: Payment Verification (optional)
+app.post("/verify-payment", async (req, res) => {
+  const crypto = require("crypto");
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, amount ,values} =
+    req.body;
+console.log(razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, amount ,values,"data")
+  const key_secret = "1K2HFkgh6S5w62GiO6k0tuhM";
+
+  try {
+    // Step 1️⃣ – Verify Razorpay signature
+    const hmac = crypto
+      .createHmac("sha256", key_secret)
+      .update(razorpay_order_id + "|" + razorpay_payment_id)
+      .digest("hex");
+const finalAmount = amount / 100;
+    if (hmac === razorpay_signature && values == finalAmount) {
+      // const finalAmount = amount / 100; // Convert paise → ₹
+const finalAmount = amount / 100;
+      // Step 2️⃣ – Insert into MySQL using your stored procedure
+      const [result] = await pool.query(
+        "CALL insertAmountOrderHistory(?, ?, ?, ?, ?)",
+        [razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID, finalAmount]
+      );
+
+      console.log("✅ Payment Inserted:", result);
+
+      // Step 3️⃣ – Respond to frontend
+      res.json({
+        success: true,
+        message: "✅ Payment verified & saved successfully",
+        fLoginID,
+        amount: finalAmount,
+      });
+    } else {
+      res.json({ success: false, message: "❌ Payment verification failed" });
+    }
+  } catch (error) {
+    console.error("💥 Error verifying payment:", error);
+    res.status(500).json({ success: false, message: "Server error: " + error.message });
+  }
+});
+
+// app.post("/verify-payment", (req, res) => {
+//   const crypto = require("crypto");
+//   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID,amount } =
+//     req.body;
+// console.log(razorpay_order_id, razorpay_payment_id, razorpay_signature, fLoginID,amount,'verifypayment');
+//   const key_secret = "1K2HFkgh6S5w62GiO6k0tuhM";
+
+//   const hmac = crypto
+//     .createHmac("sha256", key_secret)
+//     .update(razorpay_order_id + "|" + razorpay_payment_id)
+//     .digest("hex");
+
+//   if (hmac === razorpay_signature) {
+//     // ✅ Payment verified successfully
+
+//     // Example: Save to DB (MySQL or Mongo)
+//     // await db.query("INSERT INTO payments (fLoginID, order_id, payment_id, status) VALUES (?, ?, ?, ?)", [fLoginID, razorpay_order_id, razorpay_payment_id, 'success']);
+
+//     res.json({
+//       success: true,
+//       message: "Payment verified successfully",
+//       fLoginID, // 👈 send back who paid
+//     });
+//   } else {
+//     res.json({ success: false, message: "Payment verification failed" });
+//   }
+// });
+
+//End Razorpay
 
 app.post("/api/updatePassword", async (req, res) => {
   const { loginID, oldPassword, newPassword } = req.body;
@@ -34,8 +129,38 @@ app.post("/api/updatePassword", async (req, res) => {
   }
 });
 
-//AdminPanal
 
+
+
+
+app.post("/get-login-validity", async (req, res) => {
+  const { fLoginID } = req.body;
+
+  if (!fLoginID) {
+    return res.status(400).json({ success: false, message: "fLoginID is required" });
+  }
+
+  try {
+    const [rows] = await pool.query("CALL sp_GetLoginValidity(?)", [fLoginID]);
+    const user = rows[0]?.[0];
+
+    res.json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.error("Error fetching login data:", error);
+    res.status(500).json({ success: false, message: "Database error" });
+  }
+});
+
+
+
+
+
+
+
+//AdminPanal
 app.post("/InsertLoginToAdmin", async (req, res) => {
   const { Name, Phone, Password, ValidityDate ,StaffCount,Remarks} = req.body;
 
@@ -108,6 +233,30 @@ app.put("/UpdateUser", async (req, res) => {
     res.status(500).json({ message: "Failed to update user" });
   }
 });
+
+
+app.get("/getorderHistory", async (req, res) => {
+  try {
+    const [rows] = await pool.query("CALL 	getOrderHistory()"); // using your admin procedure
+
+    res.json({
+      success: true,
+      message: "Order fetched successfully",
+      data: rows[0] || [], // ✅ extract first result set
+    });
+  } catch (error) {
+    console.error("Error fetching order:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch order" });
+  }
+});
+
+
+
+
+
+
+
+
 //admindeletefor user
 // Delete user by LoginID
 app.delete("/DeleteUser/:id", async (req, res) => {
@@ -150,6 +299,43 @@ app.post("/InsertLogin", async (req, res) => {
 
 
 //check login
+// app.post("/checklogin", async (req, res) => {
+//   const { Phone, Password } = req.body;
+
+//   if (!Phone || !Password) {
+//     return res.status(400).json({ success: false, message: "Phone and Password are required" });
+//   }
+
+//   try {
+//     // 1️⃣ Phone number check
+//     const [phoneRows] = await pool.query("SELECT * FROM login WHERE Phone = ?", [Phone]);
+
+//     if (phoneRows.length === 0) {
+//       // Phone not found
+//       return res.json({ success: false, code: "NOT_FOUND", message: "Account not found" });
+//     }
+
+//     // 2️⃣ Password check
+//     const [rows] = await pool.query("CALL CheckLogin(?, ?)", [Phone, Password]);
+//     const user = rows[0]?.[0];
+
+//     if (!user) {
+//       // Phone exists, but password wrong
+//       return res.json({ success: false, code: "WRONG_PASSWORD", message: "Password is incorrect" });
+//     }
+
+//     // 3️⃣ Expiry check
+//     if (user.ValidityDate && new Date(user.ValidityDate) < new Date()) {
+//       return res.json({ success: false, code: "EXPIRED", message: "Your account has expired" });
+//     }
+
+//     // 4️⃣ Successful login
+//     res.json({ success: true, user });
+//   } catch (error) {
+//     console.error("Error executing procedure:", error);
+//     res.status(500).json({ success: false, code: "SERVER_ERROR", message: "Database error" });
+//   }
+// });
 app.post("/checklogin", async (req, res) => {
   const { Phone, Password } = req.body;
 
@@ -160,9 +346,7 @@ app.post("/checklogin", async (req, res) => {
   try {
     // 1️⃣ Phone number check
     const [phoneRows] = await pool.query("SELECT * FROM login WHERE Phone = ?", [Phone]);
-
     if (phoneRows.length === 0) {
-      // Phone not found
       return res.json({ success: false, code: "NOT_FOUND", message: "Account not found" });
     }
 
@@ -171,17 +355,23 @@ app.post("/checklogin", async (req, res) => {
     const user = rows[0]?.[0];
 
     if (!user) {
-      // Phone exists, but password wrong
       return res.json({ success: false, code: "WRONG_PASSWORD", message: "Password is incorrect" });
     }
 
     // 3️⃣ Expiry check
     if (user.ValidityDate && new Date(user.ValidityDate) < new Date()) {
-      return res.json({ success: false, code: "EXPIRED", message: "Your account has expired" });
+      // Account expired → still success, but mark as expired
+      return res.json({
+        success: true,
+        code: "EXPIRED",
+        message: "Your account has expired",
+        user
+      });
     }
 
     // 4️⃣ Successful login
-    res.json({ success: true, user });
+    res.json({ success: true, code: "ACTIVE", user });
+
   } catch (error) {
     console.error("Error executing procedure:", error);
     res.status(500).json({ success: false, code: "SERVER_ERROR", message: "Database error" });
